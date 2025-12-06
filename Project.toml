@@ -1,0 +1,12 @@
+name = "BasicBlackHoleSim"
+uuid = "85eb58d7-e894-4321-a0d0-3cd5d3813362"
+version = "0.1.0"
+authors = ["jonesdwill <jonesdwill@outlook.com>"]
+
+[deps]
+DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
+Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
+
+[compat]
+DataFrames = "1.8.1"
+Plots = "1.41.2"
