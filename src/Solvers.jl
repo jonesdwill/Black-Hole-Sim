@@ -2,51 +2,44 @@ module Solvers
 
 using DifferentialEquations
 using LinearAlgebra
-
+using RecursiveArrayTools
 using ..Constants
 using ..Physics
 
 export setup_problem, solve_orbit
 
-"""
-Creates an ODE for the specific physics model.
-"""
 function setup_problem(model_type::Symbol, u0, tspan, M)
-    
-    if model_type == :newtonian
-        func = Physics.newtonian_2D_model!
-    elseif model_type == :schwarzschild
-        func = Physics.schwarzschild_2D_model!
-    else
-        error("Unknown model type. Use :newtonian or :schwarzschild")
-    end
+    pos_0 = u0[1:3] 
+    vel_0 = u0[4:6] 
 
-    return ODEProblem(func, u0, tspan, M)
+    if model_type == :schwarzschild
+
+        return DynamicalODEProblem(Physics.schwarzschild_acceleration!, Physics.velocity_law!, vel_0, pos_0, tspan, M)
+
+    elseif model_type == :newtonian
+
+        return DynamicalODEProblem(Physics.newtonian_acceleration!, Physics.velocity_law!, vel_0, pos_0, tspan, M)
+
+    else
+        error("Unknown model type.")
+    end
 end
 
-"""
-Solves ODE with high precision.
-Includes a callback to stop if the particle hits Event Horizon.
-"""
-function solve_orbit(prob; rel_tol=1e-12)
+function solve_orbit(prob; rel_tol=1e-12, dt=1e-5, kwargs...)
     
-    # safety check
     M = prob.p
-    Rs = (2 * G * M) / c^2
+    Rs = (2 * Constants.G * M) / Constants.c^2
 
     function condition(u, t, integrator)
-        r = norm(u[1:2])
-        return r - Rs # When this hits 0, the event triggers
+        pos = u.x[2]      
+        r = norm(pos)
+        return r - Rs 
     end
 
-    # stop 
     affect!(integrator) = terminate!(integrator)
-    
-    # finds when r == Rs
     cb = ContinuousCallback(condition, affect!)
 
-    # Vern9 is a highly accurate 9th-order Runge-Kutta solver.
-    return solve(prob, Vern9(), reltol=rel_tol, abstol=rel_tol, callback=cb)
+    return solve(prob, KahanLi8(), dt=dt, reltol=rel_tol, abstol=rel_tol, callback=cb)
 end
 
 end

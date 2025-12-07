@@ -1,63 +1,59 @@
 module Physics
 
-using ..Constants   
+using ..Constants 
 using LinearAlgebra 
 
-export newtonian_2D_model!, schwarzschild_model!
-
+# EXPORTS: We now export the split functions
+export velocity_law!, newtonian_acceleration!, schwarzschild_acceleration!
 
 """
-classic newtonian 2D equations of motion.
-u = [x, y, vx, vy]
-p = mass of the black hole (M)
+THE VELOCITY LAW
 """
-function newtonian_2D_model!(du, u, p, t)
-    # Unpack
-    x, y = u[1], u[2]
-    vx, vy = u[3], u[4]
-    M = p
-    
-    # Calculate r
-    r = hypot(x, y) 
-    
-    # Newtonian Acceleration Coefficient (F/r)
-    prefactor = -(Constants.G * M) / (r^3)
-    
-    # Update State in-place
-    du[1] = vx            # dx/dt = vx
-    du[2] = vy            # dy/dt = vy
-    du[3] = prefactor * x # dvx/dt = ax
-    du[4] = prefactor * y # dvy/dt = ay
+function velocity_law!(dq, v, q, p, t)
+    dq[1] = v[1]
+    dq[2] = v[2]
+    dq[3] = v[3]
 end
 
-
-
 """
-Includes the GR correction term from the effective potential.
+NEWTONIAN ACCELERATION
 """
-function schwarzschild_2D_model!(du, u, p, t)
-    x, y = u[1], u[2]
-    vx, vy = u[3], u[4]
+function newtonian_acceleration!(dv, v, q, p, t)
+
+    x, y, z = q[1], q[2], q[3]
     M = p
-    r = hypot(x, y)
+    r = norm(q)
+
+    prefactor = -(Constants.G * M) / (r^3)
     
-    # Angular Momentum per unit mass 
-    h = (x * vy) - (y * vx)
+    # Update Acceleration (dv)
+    dv[1] = prefactor * x
+    dv[2] = prefactor * y
+    dv[3] = prefactor * z
+end
 
-    # Newtonian Forces Coefficient
+"""
+SCHWARZSCHILD ACCELERATION
+"""
+function schwarzschild_acceleration!(dv, v, q, p, t)
+    x, y, z = q[1], q[2], q[3]
+    vx, vy = v[1], v[2]
+    M = p
+    r = norm(q)
+    
+    h_vec = cross(q, v) 
+    h_sq = dot(h_vec, h_vec) 
+
+    # Coefficients
     term_newton = -(Constants.G * M) / r^3
+    term_gr = -(3 * Constants.G * M * h_sq) / (Constants.c^2 * r^5)
 
-    # GR Correction Coefficient
-    term_gr = -(3 * Constants.G * M * h^2) / (Constants.c^2 * r^5)
-
-    # Total Acceleration Coefficient
     total_coeff = term_newton + term_gr
 
-    # Update State
-    du[1] = vx
-    du[2] = vy
-    du[3] = total_coeff * x
-    du[4] = total_coeff * y
+    # Update Acceleration
+    dv[1] = total_coeff * x
+    dv[2] = total_coeff * y
+    dv[3] = total_coeff * z 
 end
 
 end

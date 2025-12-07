@@ -4,6 +4,7 @@ module BasicBlackHoleSim
 using DifferentialEquations
 using Plots
 using LinearAlgebra
+using RecursiveArrayTools
 
 # Project Structure 
 include("Constants.jl")
@@ -18,10 +19,10 @@ using .Solvers
 using .Visuals
 
 # User-end
-export Constants              # Access G, c
-export NewtonianPhysics       # Access equations
-export simulate_orbit         # Main
-export plot_orbit             # Visualisation
+export Constants                   # Access G, c
+export NewtonianPhysics            # Access equations
+export simulate_orbit              # Main
+export plot_orbit, animate_orbit   # Visualisation
 
 
 """
