@@ -2,6 +2,7 @@ using Test
 using BasicBlackHoleSim
 using BasicBlackHoleSim.Constants
 using BasicBlackHoleSim.Utils
+using BasicBlackHoleSim.Solvers
 using LinearAlgebra
 using DifferentialEquations 
 
@@ -25,53 +26,41 @@ function calculate_newtonian_energy(u, M)
 end
 
 """
-Calculates the conserved energy (E) and axial angular momentum (Lz) per unit mass
-for a particle in a Kerr spacetime. These are constants of motion for a geodesic.
+Calculates the Hamiltonian for a particle in Kerr spacetime.
+H = 1/2 g^μν p_μ p_ν
+For a massive particle (m=1), this should be conserved and equal to -0.5.
 """
-function calculate_kerr_constants_of_motion(u, M, a)
-    r, theta = u[2], u[3]
-    ut, uphi = u[5], u[8]
+function calculate_kerr_hamiltonian(u, p)
+    M, a = p
+    
+    # Coordinates and Momenta
+    r, θ = u[2], u[3]
+    pt, pr, pθ, pϕ = u[5], u[6], u[7], u[8]
 
-    sin_theta_sq = sin(theta)^2
-    cos_theta_sq = cos(theta)^2
-
-    Σ = r^2 + a^2 * cos_theta_sq
+    # Metric Inverse Components (g^μν)
+    sin_θ, cos_θ = sincos(θ)
+    Σ = r^2 + a^2 * cos_θ^2
     Δ = r^2 - 2*M*r + a^2
 
-    # Covariant metric components
-    g_tt = -(1 - 2 * M * r / Σ)
-    g_tφ = -(2 * M * r * a * sin_theta_sq / Σ)
-    g_φφ = ((r^2 + a^2)^2 - Δ * a^2 * sin_theta_sq) * sin_theta_sq / Σ
+    # Avoid division by zero if at singularity or on horizon with certain coordinates
+    if Σ == 0 || Δ == 0 || sin_θ == 0
+        return NaN
+    end
 
-    # Conserved quantities per unit mass (from covariant momentum components)
-    E = -(g_tt * ut + g_tφ * uphi)
-    Lz = g_tφ * ut + g_φφ * uphi
-    
-    return E, Lz
-end
+    inv_g_tt = -((r^2 + a^2)^2 - Δ * a^2 * sin_θ^2) / (Δ * Σ)
+    inv_g_rr = Δ / Σ
+    inv_g_θθ = 1.0 / Σ
+    inv_g_ϕϕ = (Δ - a^2 * sin_θ^2) / (Δ * Σ * sin_θ^2)
+    inv_g_tϕ = -(2 * M * r * a) / (Δ * Σ)
 
-"""
-Calculates the squared norm of the 4-velocity, g_μν u^μ u^ν.
-For a massive particle, this should be conserved and equal to -1.
-"""
-function calculate_4_velocity_norm_sq(u, M, a)
-    r, theta, ut, ur, utheta, uphi = u[2], u[3], u[5], u[6], u[7], u[8]
-    sin_theta_sq = sin(theta)^2
-    Σ = r^2 + a^2 * cos(theta)^2
-    Δ = r^2 - 2 * M * r + a^2
-
-    # Re-calculate metric components needed for the dot product
-    g_tt = -(1 - 2 * M * r / Σ); g_tφ = -(2 * M * r * a * sin_theta_sq / Σ)
-    g_rr = Σ / Δ; g_θθ = Σ
-    g_φφ = ((r^2 + a^2)^2 - Δ * a^2 * sin_theta_sq) * sin_theta_sq / Σ
-    
-    return g_tt*ut^2 + g_rr*ur^2 + g_θθ*utheta^2 + g_φφ*uphi^2 + 2*g_tφ*ut*uphi
+    # Hamiltonian H = 1/2 * g^μν p_μ p_ν
+    return 0.5 * (inv_g_tt*pt^2 + inv_g_rr*pr^2 + inv_g_θθ*pθ^2 + inv_g_ϕϕ*pϕ^2 + 2*inv_g_tϕ*pt*pϕ)
 end
 
 @testset "BasicBlackHoleSim.jl" begin
 
     @testset "Physics Helpers" begin
-        M = 1.0 * M_sun
+        M = Constants.M # Use dimensionless mass (1.0)
         
         @testset "get_black_hole_parameters" begin
             expected_Rs = (2 * G * M) / c^2
@@ -84,13 +73,25 @@ end
             expected_v = sqrt(G * M / r0)
             @test circular_velocity(M, r0) ≈ expected_v
         end
+
+        @testset "get_initial_photon_state_scattering" begin
+            M = 1.0
+            a = 0.9
+            r0 = 50.0
+            b = 5.0 # impact parameter
+            u0_photon = get_initial_photon_state_scattering(r0, b, M, a)
+            
+            # For a photon, the Hamiltonian must be 0
+            H_photon = calculate_kerr_hamiltonian(u0_photon, (M, a))
+            @test H_photon ≈ 0.0 atol=1e-9
+        end
     end
 
     @testset "Post-Newtonian Solvers" begin
-        M = 1.0 * M_sun
-        r0 = 5.0e7 
+        M = Constants.M # Use dimensionless mass (1.0)
+        r0 = 20.0 # Use a larger radius for stability in PN tests
         v0 = circular_velocity(M, r0)
-        tspan = (0.0, 10.0) # Short simulation time for testing
+        tspan = (0.0, 100.0) # Longer simulation time for better test of conservation
 
         u0 = [r0, 0.0, 0.0, 0.0, v0, 0.0] 
 
@@ -113,53 +114,52 @@ end
         @testset "Kerr Solver" begin
             a_star = 0.98
             p = (M, a_star)
-            sol = simulate_orbit(:kerr, u0, tspan, p)
+            sol = simulate_orbit(:kerr_acceleration, u0, tspan, p)
             @test Symbol(sol.retcode) == :Success
             @test sol.u[end] != u0
         end
     end
 
     @testset "Geodesic Kerr Solver" begin
-        M_kg = 1.0 * M_sun
-        a_star = 0.98
+        M = 1.0
+        a_star = 0.9
+        kerr_params = (M, a_star)
+        # In geometric units with M=1, a_geom = a_star
+        a_geom = a_star 
 
-        M_geom = (G * M_kg) / c^2 
-        a_geom = a_star * M_geom
-        
-        # Stable circular orbit initial conditions
-        r0 = 6.0 * M_geom
+        r0 = 10.0
         theta0 = π/2
-        ur0 = 0.0
-        utheta0 = 0.0
+        phi0 = 0.0
+        tspan = (0.0, 500.0)
 
-        # Calculate initial 4-velocities for a circular orbit
-        ut, uphi = calculate_circular_geodesic_velocity(r0, M_geom, a_geom)
-        ut0 = normalize_velocity(r0, theta0, ur0, utheta0, uphi, M_geom, a_geom)
+        # Use utils to get initial conditions for a circular orbit
+        ut_circ, uphi_circ = calculate_circular_orbit_properties(r0, M, a_geom)
         
-        @test !isnothing(ut0) 
+        # Geodesic state vector [t, r, θ, ϕ, uᵗ, uʳ, uᶿ, uᵠ]
+        u_geo_initial = [0.0, r0, theta0, phi0, ut_circ, 0.0, 0.0, uphi_circ]
 
-        # State: t, r, θ, φ, ut, ur, uθ, uφ
-        u0 = [0.0, r0, theta0, 0.0, ut0, ur0, utheta0, uphi] 
-        tspan = (0.0, 50.0 * M_geom) # Simulate for a short proper time
-        p = (M_geom, a_geom)
+        # Convert to Hamiltonian state vector [t, r, θ, ϕ, pₜ, pᵣ, pₜ, pᵩ]
+        u_ham_initial = get_initial_hamiltonian_state(u_geo_initial, M, a_geom)
 
-        # Use a stiff solver for the geodesic equations, which are numerically stiff.
-        sol = simulate_orbit(:kerr_geodesic, u0, tspan, p, alg=Rodas5(), maxiters=1e7)
+        # Setup and solve
+        prob = setup_problem(:kerr_geodesic_acceleration, u_ham_initial, tspan, kerr_params)
+        sol = solve_orbit(prob, reltol=1e-10, abstol=1e-10) # Use tighter tolerances for conservation tests
+
         @test Symbol(sol.retcode) == :Success
 
-        # Test for conservation of Energy (E) and Angular Momentum (Lz)
-        E_initial, Lz_initial = calculate_kerr_constants_of_motion(sol.u[1], M_geom, a_geom)
-        E_final, Lz_final = calculate_kerr_constants_of_motion(sol.u[end], M_geom, a_geom)
-        
-        @test E_final ≈ E_initial rtol=1e-7
-        @test Lz_final ≈ Lz_initial rtol=1e-7
+        # Test conservation of energy (p_t) and angular momentum (p_phi)
+        pt_initial = u_ham_initial[5]
+        p_phi_initial = u_ham_initial[8]
+        @test sol.u[end][5] ≈ pt_initial rtol=1e-7
+        @test sol.u[end][8] ≈ p_phi_initial rtol=1e-7
 
-        # Test that 4-velocity remains normalized to -1
-        norm_sq_initial = calculate_4_velocity_norm_sq(sol.u[1], M_geom, a_geom)
-        norm_sq_final = calculate_4_velocity_norm_sq(sol.u[end], M_geom, a_geom)
+        # Test conservation of Hamiltonian (related to rest mass)
+        H_initial = calculate_kerr_hamiltonian(sol.u[1], kerr_params)
+        H_final = calculate_kerr_hamiltonian(sol.u[end], kerr_params)
 
-        @test norm_sq_initial ≈ -1.0 rtol=1e-9
-        @test norm_sq_final ≈ -1.0 rtol=1e-7 # Allow slightly larger tolerance at the end
+        # For a massive particle with m=1, H = -m^2/2 = -0.5
+        @test H_initial ≈ -0.5 rtol=1e-7
+        @test H_final ≈ H_initial rtol=1e-7
     end
     
 end

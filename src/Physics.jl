@@ -230,10 +230,7 @@ function kerr_geodesic!(du, u, p, λ)
     du[1], du[2], du[3], du[4] = ut, ur, uθ, uϕ
 
     # --- ACCELERATIONS (du^μ/dλ = -Γ^μ_αβ u^α u^β) ---
-    # This is a direct implementation of the geodesic equations. The previous
-    # implementation had several sign and term errors, particularly in the
-    # radial acceleration, causing all orbits to plunge. This is a corrected,
-    # verified formulation.
+    # direct implementation of the geodesic equations.
 
     # d(u^t)/dλ
     du[5] = (2*M*r/Σ^2) * ( (r_sq+a_sq)*ut - a*uϕ )*ur + 
