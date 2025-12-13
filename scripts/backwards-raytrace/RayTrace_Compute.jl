@@ -14,26 +14,22 @@ using BasicBlackHoleSim.Physics
 using BasicBlackHoleSim.Utils
 
 # ==========================================
-# 1. OPTIMIZED CONFIG
+# 1. CONFIG (One Static Frame)
 # ==========================================
-# "Draft Quality" Resolution (200x112)
-# This is small enough to compute in minutes but big enough to see the animation.
-width = 200
-height = 112
+width = 400
+height = 225
 
-num_frames = 60
+# Fixed Camera Angle (75 degrees looks cool)
+r_cam = 1000.0
+theta_cam = 75.0 * (π/180) 
+FOV = 25.0
 
-# Physics Setup
 M = 1.0
 a_star = 0.99
 a = a_star * M
 rh = M + sqrt(M^2 - a^2)
 r_isco = 1.0 + sqrt(1.0 - a_star^2)
 disk_outer_edge = 20.0
-
-# Output Directory
-output_dir = projectdir("scripts/backwards-raytrace", "swirl_data_frames")
-if !isdir(output_dir) mkpath(output_dir) end
 
 # ==========================================
 # 2. PHYSICS ENGINE
@@ -53,79 +49,56 @@ function get_redshift(r, p_t, p_phi, M, a)
     return E_inf / E_emit
 end
 
-function compute_frame(frame_idx)
-    # --- ANIMATION LOGIC ---
-    progress = (frame_idx - 1) / num_frames
-    
-    # Tilt up and down (75 -> 60 -> 75 degrees)
-    angle_deg = 75.0 - 15.0 * sin(progress * 2π)
-    
-    theta_cam = angle_deg * (π/180)
-    r_cam = 1000.0
-    FOV = 25.0 
+println("Computing Static Frame ($width x $height)...")
 
-    println("Computing Frame $frame_idx / $num_frames (Angle: $(round(angle_deg, digits=1)))")
+raw_data = fill((-1.0f0, 0.0f0, 0.0f0), height, width)
 
-    # Store (Radius, Redshift, Phi)
-    raw_data = fill((-1.0f0, 0.0f0, 0.0f0), height, width)
+alphas = range(-FOV/2, FOV/2, length=width)
+betas = range(-FOV*(height/width)/2, FOV*(height/width)/2, length=height)
+params = (M, a)
 
-    alphas = range(-FOV/2, FOV/2, length=width)
-    betas = range(-FOV*(height/width)/2, FOV*(height/width)/2, length=height)
-    params = (M, a)
+horizon_cb = ContinuousCallback((u,t,i)->u[2]-(rh*1.01), terminate!)
+disk_cb = ContinuousCallback((u,t,i)->cos(u[3]), terminate!)
+cb_set = CallbackSet(horizon_cb, disk_cb)
 
-    # Reusing callbacks
-    horizon_cb = ContinuousCallback((u,t,i)->u[2]-(rh*1.01), terminate!)
-    disk_cb = ContinuousCallback((u,t,i)->cos(u[3]), terminate!)
-    cb_set = CallbackSet(horizon_cb, disk_cb)
+counter = Threads.Atomic{Int}(0)
+total_pixels = width * height
 
-    Threads.@threads for j in 1:height
-        for i in 1:width
-            alpha = alphas[i]
-            beta = betas[j]
+Threads.@threads for j in 1:height
+    for i in 1:width
+        alpha = alphas[i]
+        beta = betas[j]
 
-            # OPTIMIZATION: Bounding Box Check
-            # If the ray is outside the visual radius of the disk, skip it.
-            # 35.0 is slightly larger than disk_outer_edge (20.0) + camera skew
-            if (alpha^2 + beta^2) > (35.0^2)
-                continue
-            end
+        u0_vec = get_initial_photon_state_celestial(alpha, beta, r_cam, theta_cam, M, a)
+        if any(isnan, u0_vec) continue end
 
-            u0_vec = get_initial_photon_state_celestial(alpha, beta, r_cam, theta_cam, M, a)
-            if any(isnan, u0_vec) continue end
+        # High Quality Settings (reltol=1e-4) to prevent "static noise"
+        prob = ODEProblem(Physics.kerr_geodesic_acceleration!, u0_vec, (0.0, 3000.0), params)
+        sol = solve(prob, Tsit5(), reltol=1e-4, abstol=1e-4, callback=cb_set, save_everystep=false, dtmax=20.0)
 
-            # OPTIMIZATION: Relaxed Tolerances
-            # reltol=5e-2 (5%) is perfectly fine for animation visuals
-            prob = ODEProblem(Physics.kerr_geodesic_acceleration!, u0_vec, (0.0, 3000.0), params)
-            sol = solve(prob, Tsit5(), reltol=5e-1, abstol=5e-1, callback=cb_set, save_everystep=false, dtmax=50.0)
-
-            final_state = sol.u[end]
-            r_final = final_state[2]
-            theta_final = final_state[3]
-            phi_final = final_state[4] 
+        final_state = sol.u[end]
+        r_final = final_state[2]
+        theta_final = final_state[3]
+        phi_final = final_state[4] 
+        
+        hit_disk = abs(cos(theta_final)) < 0.05 && r_final > rh * 1.05
+        
+        if hit_disk && r_final > r_isco && r_final < disk_outer_edge
+            p_t = final_state[5]
+            p_phi = final_state[8]
+            g = get_redshift(r_final, p_t, p_phi, M, a)
             
-            hit_disk = abs(cos(theta_final)) < 0.05 && r_final > rh * 1.05
-            
-            if hit_disk && r_final > r_isco && r_final < disk_outer_edge
-                p_t = final_state[5]
-                p_phi = final_state[8]
-                g = get_redshift(r_final, p_t, p_phi, M, a)
-                
-                raw_data[j, i] = (Float32(r_final), Float32(g), Float32(phi_final))
-            end
+            # Save R, G, and PHI
+            raw_data[j, i] = (Float32(r_final), Float32(g), Float32(phi_final))
+        end
+
+        c = Threads.atomic_add!(counter, 1)
+        if c % 5000 == 0
+            print("\rProgress: $(round(c/total_pixels*100, digits=1))% ")
         end
     end
-
-    filename = joinpath(output_dir, "frame_$(lpad(frame_idx, 3, '0')).jls")
-    serialize(filename, raw_data)
 end
 
-# ==========================================
-# 3. MAIN LOOP
-# ==========================================
-println("Starting Optimized Physics Bake with $(Threads.nthreads()) threads...")
-
-for i in 1:num_frames
-    compute_frame(i)
-end
-
-println("All frames saved to $output_dir")
+output_file = projectdir("scripts/backwards-raytrace", "static_blackhole_data.jls")
+serialize(output_file, raw_data)
+println("\nDone! Saved to $output_file")
