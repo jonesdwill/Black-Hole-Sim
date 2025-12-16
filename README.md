@@ -1,6 +1,6 @@
 # BasicBlackHoleSim
 
-A project to learn Julia and some basic GR theory, to simulate and render black hole properties.  
+A project to learn Julia and some basic GR theory. Simulates and renders black hole properties.  
 
 ## Features
 ### Physics Module
