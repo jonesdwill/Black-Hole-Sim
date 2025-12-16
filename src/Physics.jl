@@ -99,7 +99,6 @@ function kerr_acceleration!(dv, v, q, p, t)
     az_central = central_coeff * z
 
     # --- Lense-Thirring part (frame-dragging, non-central force) ---
-    # Assumes rotation is along the z-axis: only apply if black hole is spinning (a* = 0)!
     if a_star != 0.0
 
         # black hole's angular momentum
@@ -130,8 +129,8 @@ end
 #           GEOMETRIC APPROXIMATION
 # ===========================================
 
-# #  This is the hard bit to get working, but its effectively just a direct implementation of the geodesic equations, 
-# # to be solved by an in-built package. 
+# #  Hard coded geodesic Kerr equations here: nothing spectacular
+
 """
 KERR ACCELERATION 
 Includes Schwarzschild precession and Lense-Thirring frame-dragging.
@@ -140,67 +139,67 @@ function kerr_geodesic_acceleration!(du, u, p, λ)
     M, a = p
     
     # Coordinates
-    t, r, θ, ϕ = u[1], u[2], u[3], u[4]
-    # Momenta (covariant components p_μ)
-    pt, pr, pθ, pϕ = u[5], u[6], u[7], u[8]
+    t, r, theta, phi = u[1], u[2], u[3], u[4]
+    # Momenta (covariant components p_mu)
+    pt, pr, ptheta, pphi = u[5], u[6], u[7], u[8]
 
-    # --- Metric Inverse Components (g^μν) ---
+    # --- Metric Inverse Components (g^muν) ---
     # Sigma = r^2 + a^2 cos^2(theta)
     # Delta = r^2 - 2Mr + a^2
-    sin_θ = sin(θ)
-    cos_θ = cos(θ)
-    Σ = r^2 + a^2 * cos_θ^2
-    Δ = r^2 - 2*M*r + a^2
+    sin_theta = sin(theta)
+    cos_theta = cos(theta)
+    sigma = r^2 + a^2 * cos_theta^2
+    delta = r^2 - 2*M*r + a^2
 
-    # Contravariant Metric components g^μν
-    inv_g_tt = -((r^2 + a^2)^2 - Δ * a^2 * sin_θ^2) / (Δ * Σ)
-    inv_g_rr = Δ / Σ
-    inv_g_θθ = 1.0 / Σ
-    inv_g_ϕϕ = (Δ - a^2 * sin_θ^2) / (Δ * Σ * sin_θ^2)
-    inv_g_tϕ = -(2 * M * r * a) / (Δ * Σ)
+    # Contravariant Metric components g^muν
+    inv_g_tt = -((r^2 + a^2)^2 - delta * a^2 * sin_theta^2) / (delta * sigma)
+    inv_g_rr = delta / sigma
+    inv_g_thetatheta = 1.0 / sigma
+    inv_g_phiphi = (delta - a^2 * sin_theta^2) / (delta * sigma * sin_theta^2)
+    inv_g_tphi = -(2 * M * r * a) / (delta * sigma)
 
     # --- Hamilton's Equations ---
-    # 1Velocity equations: dx^μ / dλ = g^μν p_ν
+    # 1Velocity equations: dx^mu / dλ = g^muν p_ν
     
     # dt/dλ
-    du[1] = inv_g_tt * pt + inv_g_tϕ * pϕ
+    du[1] = inv_g_tt * pt + inv_g_tphi * pphi
     # dr/dλ
     du[2] = inv_g_rr * pr
-    # dθ/dλ
-    du[3] = inv_g_θθ * pθ
-    # dϕ/dλ
-    du[4] = inv_g_tϕ * pt + inv_g_ϕϕ * pϕ
+    # dtheta/dλ
+    du[3] = inv_g_thetatheta * ptheta
+    # dphi/dλ
+    du[4] = inv_g_tphi * pt + inv_g_phiphi * pphi
 
-    # Force equations: dp_μ / dλ = -1/2 * (∂g^αβ / ∂x^μ) p_α p_β
+    # Force equations: dp_mu / dλ = -1/2 * (∂g^αβ / ∂x^mu) p_α p_β
 
     # --- Derivative wrt r ---
-    # ∂Σ/∂r = 2r, ∂Δ/∂r = 2r - 2M
-    dΣ_dr = 2*r
-    dΔ_dr = 2*r - 2*M
+    # ∂sigma/∂r = 2r, ∂delta/∂r = 2r - 2M
+    dsigma_dr = 2*r
+    ddelta_dr = 2*r - 2*M
     
     # Define H for Automatic Differentiation 
     H_func = (coords) -> begin
-        _r, _θ = coords[1], coords[2]
-        _sθ = sin(_θ); _cθ = cos(_θ)
-        _Σ = _r^2 + a^2 * _cθ^2
-        _Δ = _r^2 - 2*M*_r + a^2
+        _r, _theta = coords[1], coords[2]
+        _stheta = sin(_theta); _ctheta = cos(_theta)
+        _sigma = _r^2 + a^2 * _ctheta^2
+        _delta = _r^2 - 2*M*_r + a^2
         
-        _gtt = -((_r^2 + a^2)^2 - _Δ * a^2 * _sθ^2) / (_Δ * _Σ)
-        _grr = _Δ / _Σ
-        _gthth = 1.0 / _Σ
-        _gphph = (_Δ - a^2 * _sθ^2) / (_Δ * _Σ * _sθ^2)
-        _gtph = -(2 * M * _r * a) / (_Δ * _Σ)
+        _gtt = -((_r^2 + a^2)^2 - _delta * a^2 * _stheta^2) / (_delta * _sigma)
+        _grr = _delta / _sigma
+        _gthth = 1.0 / _sigma
+        _gphph = (_delta - a^2 * _stheta^2) / (_delta * _sigma * _stheta^2)
+        _gtph = -(2 * M * _r * a) / (_delta * _sigma)
         
-        return 0.5 * (_gtt*pt^2 + _grr*pr^2 + _gthth*pθ^2 + _gphph*pϕ^2 + 2*_gtph*pt*pϕ)
+        return 0.5 * (_gtt*pt^2 + _grr*pr^2 + _gthth*ptheta^2 + _gphph*pphi^2 + 2*_gtph*pt*pphi)
     end
 
     # Compute gradients for force terms
-    grads = ForwardDiff.gradient(H_func, [r, θ])
+    grads = ForwardDiff.gradient(H_func, [r, theta])
 
     du[5] = 0.0          # dp_t / dλ (Constant of motion E)
     du[6] = -grads[1]    # dp_r / dλ = -dH/dr
-    du[7] = -grads[2]    # dp_θ / dλ = -dH/dθ
-    du[8] = 0.0          # dp_ϕ / dλ (Constant of motion Lz)
+    du[7] = -grads[2]    # dp_theta / dλ = -dH/dtheta
+    du[8] = 0.0          # dp_phi / dλ (Constant of motion Lz)
 end
 
 end

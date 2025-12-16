@@ -372,7 +372,9 @@ end
 #           Photon Helpers
 # ======================================    
 
-
+"""
+get initial BL photon coordinates given camera parameters.
+"""
 function get_initial_photon_state_celestial(alpha, beta, r0, theta_obs, M, a)
     t0 = 0.0
     phi0 = 0.0 
@@ -382,24 +384,19 @@ function get_initial_photon_state_celestial(alpha, beta, r0, theta_obs, M, a)
     ptheta = beta 
 
     # Metric Helper calculations
-    sin_θ, cos_θ = sincos(theta_obs)
-    Σ = r0^2 + a^2 * cos_θ^2
-    Δ = r0^2 - 2*M*r0 + a^2
-
-    # # Avoid division by zero at singularities
-    # if Σ == 0 || Δ == 0 || sin_θ == 0
-    #     return fill(NaN, 8)
-    # end
+    sin_theta, cos_theta = sincos(theta_obs)
+    sigma = r0^2 + a^2 * cos_theta^2
+    delta = r0^2 - 2*M*r0 + a^2
 
     # Inverse metric components (Kerr)
-    inv_g_tt = -((r0^2 + a^2)^2 - Δ * a^2 * sin_θ^2) / (Δ * Σ)
-    inv_g_rr = Δ / Σ
-    inv_g_θθ = 1.0 / Σ
-    inv_g_ϕϕ = (Δ - a^2 * sin_θ^2) / (Δ * Σ * sin_θ^2)
-    inv_g_tϕ = -(2 * M * r0 * a) / (Δ * Σ)
+    inv_g_tt = -((r0^2 + a^2)^2 - delta * a^2 * sin_theta^2) / (delta * sigma)
+    inv_g_rr = delta / sigma
+    inv_g_thetatheta = 1.0 / sigma
+    inv_g_ϕϕ = (delta - a^2 * sin_theta^2) / (delta * sigma * sin_theta^2)
+    inv_g_tϕ = -(2 * M * r0 * a) / (delta * sigma)
 
     # Solve for radial momentum (pr)
-    pr_sq_term = -(inv_g_tt*pt^2 + inv_g_θθ*ptheta^2 + inv_g_ϕϕ*pphi^2 + 2*inv_g_tϕ*pt*pphi)
+    pr_sq_term = -(inv_g_tt*pt^2 + inv_g_thetatheta*ptheta^2 + inv_g_ϕϕ*pphi^2 + 2*inv_g_tϕ*pt*pphi)
     
     # Use your preferred ternary return style
     pr = pr_sq_term < 0 ? NaN : -sqrt(pr_sq_term / inv_g_rr)
@@ -408,10 +405,7 @@ function get_initial_photon_state_celestial(alpha, beta, r0, theta_obs, M, a)
 end
 
 """
-    get_initial_photon_state_scattering(r0, b, M, a)
-
 Convenience wrapper for a simple scattering experiment in the equatorial plane.
-Calls the master celestial function with alpha=`b` and beta=0.
 """
 function get_initial_photon_state_scattering(r0, b, M, a)
     return get_initial_photon_state_celestial(b, 0.0, r0, π/2, M, a)

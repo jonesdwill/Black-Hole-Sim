@@ -5,10 +5,11 @@ using LinearAlgebra
 using RecursiveArrayTools
 using ..Constants
 using ..Physics
-using ..Utils: get_black_hole_parameters # Import the new helper
+using ..Utils: get_black_hole_parameters 
 
 export setup_problem, solve_orbit
 
+# set up problem depending on model 
 function setup_problem(model_type::Symbol, u0, tspan, model_params)
     q0 = u0[1:3] 
     v0 = u0[4:6] 
@@ -33,11 +34,13 @@ function setup_problem(model_type::Symbol, u0, tspan, model_params)
     end
 end
 
+# solve ODE problem using Tsit5 as default 
 function solve_orbit(prob; solver=Tsit5(), reltol=1e-8, abstol=1e-8, kwargs...)
 
     # Use the helper function to get model parameters
     params = get_black_hole_parameters(prob.p)
 
+    # set up callback to end mass path 
     function condition(u, t, integrator)
         local r
         if u isa Vector
