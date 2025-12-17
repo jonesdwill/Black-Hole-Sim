@@ -55,16 +55,28 @@ struct Config
     output_path::String
 end
 
+# const CFG = Config(
+#     1920,   # Width
+#     1080,   # Height
+#     1.0,    # Mass (M)
+#     0.99,   # Spin (a*). High for max affect.
+#     12.0,   # FOV (degrees)
+#     8,      # Duration 
+#     60,     # FPS
+#     joinpath(OUTPUT_DIR, "black_hole_data_1080p.jld2"),
+#     joinpath(OUTPUT_DIR, "black_hole_1080p.gif") 
+# )
+
 const CFG = Config(
-    1920,   # Width
-    1080,   # Height
+    480,   # Width
+    270,   # Height
     1.0,    # Mass (M)
-    0.99,   # Spin (a*). High for max affect.
+    0.25,   # Spin (a*). High for max affect.
     12.0,   # FOV (degrees)
-    8,      # Duration 
+    1,      # Duration 
     60,     # FPS
-    joinpath(OUTPUT_DIR, "black_hole_data_1080p.jld2"),
-    joinpath(OUTPUT_DIR, "black_hole_1080p.gif") 
+    joinpath(OUTPUT_DIR, "black_hole_data_lowa.jld2"),
+    joinpath(OUTPUT_DIR, "black_hole_lowa.gif") 
 )
 
 # ============================================================================================================================================
@@ -134,7 +146,7 @@ function compute_physics(cfg::Config)
             alpha = ((j - 0.5) / cfg.width - 0.5) * 2 * fov_x # get horizontal angle
 
             # Spawn initial photon state from the observer coords
-            u0 = Utils.get_initial_photon_state_celestial(alpha, beta, 1000.0, deg2rad(70.0), cfg.M, a)
+            u0 = Utils.get_initial_photon_state_celestial(alpha, beta, 1000.0, deg2rad(85), cfg.M, a)
             if any(isnan, u0) continue end
 
             # !!! SET-UP and SOLVE ODE !!!
@@ -340,7 +352,7 @@ function render_animation(cfg::Config)
                 inner_fade = clamp((r_hit - r_isco) / 0.4, 0.0, 1.0)^3.5
 
                 # Sharper outer fade by reducing the fade distance
-                outer_fade = clamp((r_outer - r_hit) / 1.8, 0.0, 1.0)^3.5
+                outer_fade = clamp((r_outer - r_hit) / 1.8, 0.0, 1.0)^.5
 
                 # Combine inner and outer fades
                 opacity = inner_fade * outer_fade
@@ -350,6 +362,7 @@ function render_animation(cfg::Config)
                 hdr_color = base * intensity * opacity_final * 1.5 # Increased final brightness
                 local_frame_hdr[i, j] = hdr_color
                 # -------------------------------------------
+
             end
         end
 
